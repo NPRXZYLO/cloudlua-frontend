@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudLua - Lua Script Protection &amp; Licensing</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-card: #14141c;
+            --bg-input: #1a1a26;
+            --border: #252535;
+            --text-primary: #e8e8f0;
+            --text-secondary: #a0a0b8;
+            --accent: #4f7fff;
+            --accent-light: #7b9fff;
+            --accent-3: #00d4aa;
+            --danger: #ff4d6a;
+            --success: #00d4aa;
+            --warning: #f5a623;
+            --radius: 12px;
+            --radius-lg: 16px;
+            --transition: 0.25s ease;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; background:var(--bg-primary); color:var(--text-primary); line-height:1.6; min-height:100vh; }
+        body::before { content:''; position:fixed; inset:0; background:radial-gradient(ellipse at 30% 20%, rgba(79,127,255,0.04) 0%, transparent 50%), radial-gradient(ellipse at 70% 60%, rgba(108,92,231,0.04) 0%, transparent 50%); pointer-events:none; z-index:0; }
+        .navbar { position:fixed; top:0; left:0; right:0; z-index:1000; background:rgba(10,10,15,0.92); backdrop-filter:blur(20px); border-bottom:1px solid var(--border); padding:0 24px; animation:slideDown 0.4s ease; }
+        @keyframes slideDown { from{transform:translateY(-100%);opacity:0;} to{transform:translateY(0);opacity:1;} }
+        .navbar-inner { max-width:1300px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:60px; }
+        .nav-logo { display:flex; align-items:center; gap:10px; font-weight:800; font-size:1.3rem; cursor:pointer; }
+        .btn { display:inline-flex; align-items:center; gap:6px; padding:10px 18px; border-radius:var(--radius); font-weight:600; font-size:0.85rem; cursor:pointer; border:none; transition:all var(--transition); font-family:inherit; white-space:nowrap; text-decoration:none; background:transparent; color:var(--text-primary); }
+        .btn-primary { background:linear-gradient(135deg, #4f7fff, #6c5ce7); color:#fff; }
+        .btn-outline { border:1.5px solid var(--border); }
+        .btn-ghost { padding:8px 14px; color:var(--text-secondary); }
+        .btn-accent { border:1.5px solid var(--accent-3); color:var(--accent-3); }
+        .btn-danger { background:var(--danger); color:#fff; }
+        .btn-sm { padding:6px 12px; font-size:0.78rem; border-radius:8px; }
+        .btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.2); }
+        .dashboard { display:none; max-width:1300px; margin:0 auto; padding:40px 24px 60px; position:relative; z-index:1; }
+        .dashboard.active { display:block; animation:fadeInUp 0.4s ease; }
+        @keyframes fadeInUp { from{opacity:0;transform:translateY(20px);} to{opacity:1;transform:translateY(0);} }
+        .dash-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:28px; }
+        .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px,1fr)); gap:14px; margin-bottom:30px; }
+        .stat-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:18px 16px; }
+        .section-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:24px; margin-bottom:24px; }
+        .table-wrap { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+        table th, table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); }
+        .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(4px); z-index:2000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity var(--transition); padding:20px; }
+        .modal-overlay.active { opacity:1; pointer-events:all; }
+        .modal { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:30px 26px; width:100%; max-width:500px; box-shadow:0 20px 50px rgba(0,0,0,0.6); transform:translateY(20px); transition:transform var(--transition); position:relative; max-height:85vh; overflow-y:auto; }
+        .modal-overlay.active .modal { transform:translateY(0); }
+        .input-field { width:100%; padding:11px 14px; margin:8px 0; background:var(--bg-input); border:1.5px solid var(--border); color:var(--text-primary); border-radius:8px; font-size:0.9rem; outline:none; }
+        .code-block { background:#0d0d16; border-radius:8px; padding:16px; font-family:monospace; font-size:0.78rem; color:#a0b4ff; overflow-x:auto; white-space:pre-wrap; max-height:350px; }
+        .toast-container { position:fixed; top:70px; right:20px; z-index:3000; display:flex; flex-direction:column; gap:8px; }
+        .toast { padding:12px 18px; border-radius:var(--radius); font-weight:600; font-size:0.85rem; color:#fff; animation:slideInToast 0.3s ease; cursor:pointer; }
+        .toast.success{background:#1a8a5a;} .toast.error{background:#c0392b;} .toast.info{background:#2c5fb5;}
+        @keyframes slideInToast{from{transform:translateX(120%);opacity:0;} to{transform:translateX(0);opacity:1;}}
+    </style>
+</head>
+<body>
+    <nav class="navbar" id="navbar">
+        <div class="navbar-inner">
+            <div class="nav-logo" onclick="showHome()">☁️ CloudLua</div>
+            <div style="display:flex;align-items:center;gap:10px;" id="navActions">
+                <button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In</button>
+                <button class="btn btn-primary btn-sm" onclick="scrollToPricing()">Get Started</button>
+            </div>
+            <div style="display:none;align-items:center;gap:12px;" id="navUser">
+                <span id="navUserName" style="font-weight:600;"></span>
+                <button class="btn btn-ghost btn-sm" onclick="logout()">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="mainContent" style="padding-top:80px; max-width:1300px; margin:0 auto; text-align:center;">
+        <h1 style="font-size:3rem;">Real Lua Obfuscation</h1>
+        <p style="color:var(--text-secondary);">Executable, self‑decrypting code with HWID tracking.</p>
+        <div style="display:flex; justify-content:center; gap:12px; margin-top:24px;">
+            <button class="btn btn-primary btn-lg" onclick="scrollToPricing()">View Plans</button>
+            <button class="btn btn-outline btn-lg" onclick="openLoginModal()">Sign In</button>
+        </div>
+    </div>
+
+    <div class="dashboard" id="dashboard">
+        <div class="dash-header"><h2>📊 Dashboard</h2><div class="action-group" id="dashActions"></div></div>
+        <div class="stat-grid" id="dashStats"></div>
+        <div class="section-card"><h3>📜 Scripts</h3><div class="table-wrap"><table><thead><tr><th>Name</th><th>Actions</th></tr></thead><tbody id="scriptsTableBody"></tbody></table></div></div>
+        <div class="section-card"><h3>🔑 Keys</h3><div class="table-wrap"><table><thead><tr><th>Key</th><th>Script</th><th>Executions</th><th>Status</th><th>Actions</th></tr></thead><tbody id="keysTableBody"></tbody></table></div></div>
+        <div class="section-card"><h3>📈 Execution Log</h3><div class="table-wrap"><table><thead><tr><th>Key</th><th>HWID</th><th>Script</th><th>Time</th></tr></thead><tbody id="execLogBody"></tbody></table></div></div>
+        <div class="section-card"><h3>🚫 Blacklist</h3><div class="table-wrap"><table><thead><tr><th>HWID</th><th>Reason</th><th>Actions</th></tr></thead><tbody id="blacklistTableBody"></tbody></table></div><button class="btn btn-danger btn-sm" style="margin-top:14px;" onclick="openBlacklistModal()">+ Add</button></div>
+        <div id="adminPanel"></div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal-overlay" id="loginModalOverlay"><div class="modal"><button class="modal-close" onclick="closeModal('loginModalOverlay')">✕</button><h2>Sign In</h2><input class="input-field" id="loginApiKey" placeholder="API Key"><button class="btn btn-primary" style="width:100%;" onclick="handleLogin()">Sign In</button></div></div>
+    <div class="modal-overlay" id="signupModalOverlay"><div class="modal"><button class="modal-close" onclick="closeModal('signupModalOverlay')">✕</button><h2>Register</h2><input class="input-field" id="signupName" placeholder="Name"><input class="input-field" id="signupEmail" placeholder="Email"><input class="input-field" id="signupPassword" type="password" placeholder="Password"><select class="input-field" id="signupPlan"><option value="Basic">Basic ($12/mo)</option><option value="Pro">Pro ($25/mo)</option><option value="Max">Max ($50/mo)</option></select><button class="btn btn-primary" style="width:100%;" onclick="handleSignup()">Register</button></div></div>
+    <div class="modal-overlay" id="obfuscateModalOverlay"><div class="modal" style="max-width:600px;"><button class="modal-close" onclick="closeModal('obfuscateModalOverlay')">✕</button><h2>Obfuscate Script</h2><input class="input-field" id="obfuscateScriptName" placeholder="Script name"><textarea class="input-field" id="obfuscateCode" rows="7" placeholder="Paste Lua code"></textarea><button class="btn btn-primary" style="width:100%;" onclick="handleObfuscate()">Obfuscate</button></div></div>
+    <div class="modal-overlay" id="editScriptModalOverlay"><div class="modal" style="max-width:600px;"><button class="modal-close" onclick="closeModal('editScriptModalOverlay')">✕</button><h2>✏️ Edit Script</h2><input class="input-field" id="editScriptName"><textarea class="input-field" id="editScriptCode" rows="7"></textarea><button class="btn btn-primary" style="width:100%;" onclick="saveEditScript()">Save &amp; Re‑obfuscate</button></div></div>
+    <div class="modal-overlay" id="viewScriptModalOverlay"><div class="modal" style="max-width:700px;"><button class="modal-close" onclick="closeModal('viewScriptModalOverlay')">✕</button><h2>Obfuscated Code</h2><div class="code-block" id="viewScriptCode"></div><button class="btn btn-outline btn-sm" style="margin-top:10px;" onclick="copyObfuscatedCode()">📋 Copy</button></div></div>
+    <div class="modal-overlay" id="generateKeyModalOverlay"><div class="modal"><button class="modal-close" onclick="closeModal('generateKeyModalOverlay')">✕</button><h2>Generate Key</h2><select class="input-field" id="genKeyScript"><option value="">Select script...</option></select><button class="btn btn-primary" style="width:100%;" onclick="handleGenerateKey()">Generate</button></div></div>
+    <div class="modal-overlay" id="loadstringModalOverlay"><div class="modal"><button class="modal-close" onclick="closeModal('loadstringModalOverlay')">✕</button><h2>Loadstring Ready</h2><div id="loadstringContent" style="background:#0d0d16;padding:16px;border-radius:8px;font-family:monospace;color:#00d4aa;"></div><button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="copyLoadstring()">📋 Copy</button></div></div>
+    <div class="modal-overlay" id="blacklistModalOverlay"><div class="modal"><button class="modal-close" onclick="closeModal('blacklistModalOverlay')">✕</button><h2>Blacklist HWID</h2><input class="input-field" id="blacklistTarget" placeholder="HWID"><input class="input-field" id="blacklistReason" placeholder="Reason"><button class="btn btn-danger" style="width:100%;" onclick="handleBlacklist()">Blacklist</button></div></div>
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ⚠️ CHANGE THIS TO YOUR REAL RENDER BACKEND URL
+        const BACKEND_URL = 'https://cloudlua-backend.onrender.com';
+        
+        let currentUser = null;
+        let editingScriptId = null;
+        let currentObfuscatedCode = '';
+
+        function obfuscateLua(code) {
+            const xorKey = Math.floor(Math.random()*200)+30;
+            const encrypted = code.split('').map(c=>String.fromCharCode(c.charCodeAt(0)^xorKey)).join('');
+            return `if string.sub(string.dump(function()end),1,1)~="\\27" then while true do end end\n`+
+                   `local function _AD() pcall(function() local i=debug.getinfo(2,"S") if i and i.short_src:find("debug") then while true do end end end) end _AD()\n`+
+                   `local function _D(s) local r={} for i=1,#s do r[i]=string.char(s:byte(i)~`+xorKey+`) end return table.concat(r) end\n`+
+                   `local _E = "`+encrypted+`"\n`+
+                   `local _C = _D(_E)\n`+
+                   `local _F, _err = loadstring(_C)\n`+
+                   `if _F then local _ok, _res = pcall(_F) if not _ok then warn("CloudLua: "..tostring(_err)) end else warn("CloudLua: invalid code") end`;
+        }
+
+        function showToast(msg, type='info') {
+            const c = document.getElementById('toastContainer');
+            const t = document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg;
+            t.onclick=()=>t.remove(); c.appendChild(t);
+            setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(120%)';setTimeout(()=>t.remove(),300);},4000);
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        async function apiCall(method, path, body) {
+            const opts = { method, headers: { 'Content-Type': 'application/json' } };
+            if (body) opts.body = JSON.stringify(body);
+            const res = await fetch(BACKEND_URL + path, opts);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+
+        window.handleLogin = async function() {
+            const key = document.getElementById('loginApiKey').value.trim();
+            if (!key) return showToast('Enter API key', 'error');
+            try {
+                currentUser = await apiCall('POST', '/api/login', { apiKey: key });
+                closeModal('loginModalOverlay');
+                updateUI();
+                showToast(`Welcome, ${currentUser.name}!`, 'success');
+            } catch (e) { showToast(e.message, 'error'); }
+        };
+        window.handleSignup = async function() {
+            const name = document.getElementById('signupName').value.trim();
+            const email = document.getElementById('signupEmail').value.trim();
+            const pw = document.getElementById('signupPassword').value;
+            const plan = document.getElementById('signupPlan').value;
+            if (!name || !email || !pw) return showToast('All fields required', 'error');
+            try {
+                const { apiKey } = await apiCall('POST', '/api/register', { plan });
+                // update user details (we'll handle via backend later)
+                await apiCall('PUT', '/api/user', { apiKey, name, email, password: pw });
+                currentUser = await apiCall('POST', '/api/login', { apiKey });
+                closeModal('signupModalOverlay');
+                updateUI();
+                showToast('Account created!', 'success');
+            } catch (e) { showToast(e.message, 'error'); }
+        };
+        window.logout = () => { currentUser = null; updateUI(); };
+
+        async function loadScripts() { return currentUser ? await apiCall('GET', `/api/scripts?apiKey=${currentUser.api_key}`) : []; }
+        async function loadKeys() { return currentUser ? await apiCall('GET', `/api/keys?apiKey=${currentUser.api_key}`) : []; }
+        async function loadExecutions() { return currentUser ? await apiCall('GET', `/api/executions?apiKey=${currentUser.api_key}`) : []; }
+        async function loadBlacklist() { return currentUser ? await apiCall('GET', `/api/blacklist?apiKey=${currentUser.api_key}`) : []; }
+
+        window.handleObfuscate = async function() {
+            const name = document.getElementById('obfuscateScriptName').value.trim();
+            const code = document.getElementById('obfuscateCode').value.trim();
+            if (!name || !code) return showToast('Name and code required', 'error');
+            const obfuscated = obfuscateLua(code);
+            try {
+                await apiCall('POST', '/api/scripts', { apiKey: currentUser.api_key, name, originalCode: code, obfuscatedCode: obfuscated });
+                closeModal('obfuscateModalOverlay');
+                updateUI();
+                showToast(`"${name}" obfuscated!`, 'success');
+            } catch (e) { showToast(e.message, 'error'); }
+        };
+        window.saveEditScript = async function() {
+            const name = document.getElementById('editScriptName').value.trim();
+            const code = document.getElementById('editScriptCode').value.trim();
+            if (!name || !code) return showToast('Name and code required', 'error');
+            const obfuscated = obfuscateLua(code);
+            try {
+                await apiCall('PUT', `/api/scripts/${editingScriptId}`, { apiKey: currentUser.api_key, name, originalCode: code, obfuscatedCode: obfuscated });
+                closeModal('editScriptModalOverlay');
+                updateUI();
+                showToast('Script updated!', 'success');
+            } catch (e) { showToast(e.message, 'error'); }
+        };
+        window.handleGenerateKey = async function() {
+            const scriptId = parseInt(document.getElementById('genKeyScript').value);
+            if (!scriptId) return showToast('Select a script', 'error');
+            try {
+                const keyData = await apiCall('POST', '/api/keys', { apiKey: currentUser.api_key, scriptId });
+                closeModal('generateKeyModalOverlay');
+                updateUI();
+                showToast('Key generated!', 'success');
+                openLoadstringModal(keyData);
+            } catch (e) { showToast(e.message, 'error'); }
+        };
+        window.handleBlacklist = async function() {
+            const target = document.getElementById('blacklistTarget').value.trim();
+            const reason = document.getElementById('blacklistReason').value.trim();
+            if (!target || !reason) return;
+            try {
+                await apiCall('POST', '/api/blacklist', { apiKey: currentUser.api_key, target, reason });
+                closeModal('blacklistModalOverlay');
+                updateUI();
+                showToast('Blacklisted!', 'info');
+            } catch (e) { showToast(e.message, 'error'); }
+        };
+
+        function openLoadstringModal(keyData) {
+            const url = `${BACKEND_URL}/s/${keyData.urlId}?key=${keyData.key}&hwid=HWID-PLACEHOLDER`;
+            document.getElementById('loadstringContent').innerHTML = `Key_${keyData.key}<br>loadstring(game:HttpGet("${url}"))()`;
+            openModal('loadstringModalOverlay');
+        }
+        window.copyLoadstring = () => {
+            const el = document.getElementById('loadstringContent');
+            if (el) navigator.clipboard.writeText(el.innerText).then(()=>showToast('Copied!','success'));
+        };
+        window.copyObfuscatedCode = () => {
+            navigator.clipboard.writeText(currentObfuscatedCode).then(()=>showToast('Copied!','success'));
+        };
+        window.openViewScriptModal = (scriptId) => {
+            const script = window.allScripts?.find(s=>s.id===scriptId);
+            if (script) {
+                currentObfuscatedCode = script.obfuscated_code;
+                document.getElementById('viewScriptCode').textContent = currentObfuscatedCode;
+                openModal('viewScriptModalOverlay');
+            }
+        };
+        window.openEditScriptModal = (scriptId) => {
+            const script = window.allScripts?.find(s=>s.id===scriptId);
+            if (script) {
+                editingScriptId = scriptId;
+                document.getElementById('editScriptName').value = script.name;
+                document.getElementById('editScriptCode').value = script.original_code;
+                openModal('editScriptModalOverlay');
+            }
+        };
+        window.toggleKeyStatus = async (keyId) => {
+            await apiCall('PUT', `/api/keys/${keyId}/toggle`);
+            updateUI();
+        };
+        window.deleteKey = async (keyId) => {
+            if (!confirm('Delete key?')) return;
+            await apiCall('DELETE', `/api/keys/${keyId}`);
+            updateUI();
+        };
+        window.deleteScript = async (scriptId) => {
+            if (!confirm('Delete script and all its keys?')) return;
+            await apiCall('DELETE', `/api/scripts/${scriptId}?apiKey=${currentUser.api_key}`);
+            updateUI();
+        };
+        window.removeBlacklist = async (id) => {
+            await apiCall('DELETE', `/api/blacklist/${id}`);
+            updateUI();
+        };
+
+        window.allScripts = [];
+        async function updateUI() {
+            if (currentUser) {
+                document.getElementById('navActions').style.display = 'none';
+                document.getElementById('navUser').style.display = 'flex';
+                document.getElementById('navUserName').textContent = currentUser.name + (currentUser.is_admin?' 👑':'');
+                document.getElementById('dashboard').classList.add('active');
+                document.getElementById('mainContent').style.display = 'none';
+                await renderDashboard();
+            } else {
+                document.getElementById('navActions').style.display = 'flex';
+                document.getElementById('navUser').style.display = 'none';
+                document.getElementById('dashboard').classList.remove('active');
+                document.getElementById('mainContent').style.display = 'block';
+            }
+        }
+        async function renderDashboard() {
+            const scripts = await loadScripts();
+            const keys = await loadKeys();
+            const executions = await loadExecutions();
+            const blacklist = await loadBlacklist();
+            window.allScripts = scripts;
+            document.getElementById('dashStats').innerHTML = `
+                <div class="stat-card"><span>Plan</span><strong>${currentUser.plan}</strong></div>
+                <div class="stat-card"><span>Keys</span><strong>${keys.length}</strong></div>
+                <div class="stat-card"><span>Scripts</span><strong>${scripts.length}</strong></div>
+                <div class="stat-card"><span>Executions</span><strong>${executions.length}</strong></div>`;
+            document.getElementById('dashActions').innerHTML = `
+                <button class="btn btn-primary btn-sm" onclick="openObfuscateModal()">+ Obfuscate</button>
+                <button class="btn btn-outline btn-sm" onclick="openGenerateKeyModal()">+ Key</button>
+                <button class="btn btn-outline btn-sm" onclick="openBlacklistModal()">+ Blacklist</button>
+                ${currentUser.is_admin ? '<button class="btn btn-accent btn-sm" onclick="renderAdminPanel()">👑 Admin</button>' : ''}
+                <button class="btn btn-ghost btn-sm" onclick="logout()">← Logout</button>`;
+            let sHtml = scripts.length ? '' : '<tr><td colspan="2">No scripts.</td></tr>';
+            scripts.forEach(s => {
+                sHtml += `<tr><td>${s.name}</td><td>
+                    <button class="btn btn-ghost btn-sm" onclick="openViewScriptModal(${s.id})">View</button>
+                    <button class="btn btn-ghost btn-sm" onclick="openEditScriptModal(${s.id})">Edit</button>
+                    <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteScript(${s.id})">Del</button>
+                </td></tr>`;
+            });
+            document.getElementById('scriptsTableBody').innerHTML = sHtml;
+            let kHtml = keys.length ? '' : '<tr><td colspan="5">No keys.</td></tr>';
+            keys.forEach(k => {
+                const script = scripts.find(s=>s.id===k.script_id);
+                const execCount = executions.filter(e=>e.key_id===k.id).length;
+                kHtml += `<tr><td><code>${k.key}</code></td><td>${script?.name||'?'}</td><td>${execCount}</td>
+                    <td><span class="badge" style="background:${k.active?'rgba(0,212,170,0.12)':'rgba(255,77,106,0.12)'};color:${k.active?'var(--success)':'var(--danger)'};">${k.active?'Active':'Revoked'}</span></td>
+                    <td>
+                        <button class="btn btn-accent btn-sm" onclick="openLoadstringModal(${JSON.stringify(k).replace(/"/g,'&quot;')})">Loadstring</button>
+                        <button class="btn btn-ghost btn-sm" onclick="toggleKeyStatus('${k.id}')">${k.active?'Revoke':'Activate'}</button>
+                        <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteKey('${k.id}')">Del</button>
+                    </td></tr>`;
+            });
+            document.getElementById('keysTableBody').innerHTML = kHtml;
+            let eHtml = executions.length ? '' : '<tr><td colspan="4">No executions.</td></tr>';
+            executions.slice(0,20).forEach(e => {
+                const key = keys.find(k=>k.id===e.key_id);
+                const script = scripts.find(s=>s.id===e.script_id);
+                eHtml += `<tr><td><code>${key?.key||'?'}</code></td><td>${e.hwid}</td><td>${script?.name||'?'}</td><td>${new Date(e.timestamp).toLocaleString()}</td></tr>`;
+            });
+            document.getElementById('execLogBody').innerHTML = eHtml;
+            let bHtml = blacklist.length ? '' : '<tr><td colspan="3">Empty.</td></tr>';
+            blacklist.forEach(b => {
+                bHtml += `<tr><td>${b.target}</td><td>${b.reason}</td><td><button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="removeBlacklist('${b.id}')">Remove</button></td></tr>`;
+            });
+            document.getElementById('blacklistTableBody').innerHTML = bHtml;
+        }
+
+        window.showHome = () => { currentUser = null; updateUI(); };
+        window.scrollToPricing = () => window.scrollTo({ top: document.getElementById('mainContent').offsetTop, behavior:'smooth' });
+        window.openLoginModal = () => openModal('loginModalOverlay');
+        window.openSignupModal = () => openModal('signupModalOverlay');
+        window.openObfuscateModal = () => { if(!currentUser) return showToast('Sign in first','error'); openModal('obfuscateModalOverlay'); };
+        window.openGenerateKeyModal = async () => {
+            if(!currentUser) return showToast('Sign in first','error');
+            const scripts = await loadScripts();
+            const select = document.getElementById('genKeyScript');
+            select.innerHTML = '<option value="">Select script...</option>';
+            scripts.forEach(s => { select.innerHTML += `<option value="${s.id}">${s.name}</option>`; });
+            openModal('generateKeyModalOverlay');
+        };
+        window.openBlacklistModal = () => openModal('blacklistModalOverlay');
+        window.closeModal = (id) => document.getElementById(id).classList.remove('active');
+
+        document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', function(e){ if(e.target===this) this.classList.remove('active'); }));
+    </script>
+</body>
+</html>
