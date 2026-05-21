@@ -1078,7 +1078,7 @@ async function deleteKey(id) {
     toast('Key deleted.', 'success');
   } catch(e) { toast(e.message, 'error'); }
 }
- ----Simulate Exec
+  
 async function simulateExec() {
   if (!currentLsKey) return;
   const k = userKeys.find(x => x.id === currentLsKey.id) || currentLsKey;
