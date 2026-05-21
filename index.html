@@ -539,10 +539,28 @@ async function api(method, path, body, queryParams) {
   }
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(url, opts);
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || 'Request failed');
-  return data;
+  
+  try {
+    const r = await fetch(url, opts);
+    const contentType = r.headers.get('content-type');
+    
+    // Handle text responses (like the loadstring endpoint)
+    if (contentType && contentType.includes('text/plain')) {
+      const text = await r.text();
+      if (!r.ok) throw new Error(text || 'Request failed');
+      return text;
+    }
+    
+    // Handle JSON responses
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  } catch(e) {
+    if (e.message.includes('<!DOCTYPE')) {
+      throw new Error('Server is waking up or unreachable. Please try again in 30 seconds.');
+    }
+    throw e;
+  }
 }
  
 // ── TOAST ──
@@ -1060,7 +1078,7 @@ async function deleteKey(id) {
     toast('Key deleted.', 'success');
   } catch(e) { toast(e.message, 'error'); }
 }
- 
+ ----Simulate Exec
 async function simulateExec() {
   if (!currentLsKey) return;
   const k = userKeys.find(x => x.id === currentLsKey.id) || currentLsKey;
@@ -1070,12 +1088,18 @@ async function simulateExec() {
   const keyStr = k.key;
   try {
     const r = await fetch(`${API}/s/${urlId}?key=${keyStr}&hwid=${hwid}`);
-    if (!r.ok) { const t = await r.text(); toast('⛔ ' + t, 'error'); return; }
+    const text = await r.text();
+    if (!r.ok) { 
+      toast('⛔ ' + text, 'error'); 
+      return; 
+    }
     await refreshData();
     const execCount = userExecs.filter(e => e.key_id === k.id).length;
     toast(`✅ Exec #${execCount} | HWID: ${hwid}`, 'success');
     showLoadstringWithData(k);
-  } catch(e) { toast('Simulation error: ' + e.message, 'error'); }
+  } catch(e) { 
+    toast('Execution error: ' + e.message, 'error'); 
+  }
 }
  
 // ── BLACKLIST ──
