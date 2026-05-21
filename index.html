@@ -497,7 +497,7 @@ select.inp option{background:var(--bg2);}
 const API = 'https://cloudlua-backend.onrender.com';
 const ADMIN_KEY = 'CL-QZepomYJcINJY3XA';
 const SUPPORT_KEY = 'cl_support_tickets';
- 
+
 let currentUser = null;
 let userScripts = [];
 let userKeys = [];
@@ -506,30 +506,43 @@ let userBlacklist = [];
 let adminUsers = [];
 let currentLsKey = null;
 let editingScriptId = null;
- 
+
 // ── LOCAL STORAGE SUPPORT TICKETS ──
-function getTickets() { try { return JSON.parse(localStorage.getItem(SUPPORT_KEY) || '[]'); } catch(e) { return []; } }
-function saveTickets(t) { localStorage.setItem(SUPPORT_KEY, JSON.stringify(t)); }
- 
+function getTickets() {
+  try {
+    const raw = localStorage.getItem(SUPPORT_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) {
+    return [];
+  }
+}
+function saveTickets(t) {
+  try {
+    localStorage.setItem(SUPPORT_KEY, JSON.stringify(t));
+  } catch(e) {
+    console.error('Failed to save tickets:', e);
+  }
+}
+
 // ── OBFUSCATION ──
 function obfuscateLua(code) {
   const xk = Math.floor(Math.random() * 200) + 30;
   const enc = code.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ xk)).join('');
   return [
-    `-- CloudLua Protected Script`,
-    `-- DO NOT DECOMPILE OR MODIFY`,
-    `if string.sub(string.dump(function()end),1,1)~="\\27" then while true do end end`,
-    `local function _AD() pcall(function() local i=debug.getinfo(2,"S") if i and i.short_src:find("debug") then while true do end end end) end _AD()`,
-    `local function _D(s,k) local r={} for i=1,#s do r[i]=string.char(s:byte(i)~k) end return table.concat(r) end`,
-    `local _K=${xk}`,
-    `local _E="${enc}"`,
-    `local _C=_D(_E,_K)`,
-    `local _F,_err=loadstring(_C)`,
-    `if _F then local _ok,_r=pcall(_F) if not _ok then warn("CloudLua Runtime Error: "..tostring(_r)) end`,
-    `else warn("CloudLua: Bytecode error: "..tostring(_err)) end`
+    '-- CloudLua Protected Script',
+    '-- DO NOT DECOMPILE OR MODIFY',
+    'if string.sub(string.dump(function()end),1,1)~="\\27" then while true do end end',
+    'local function _AD() pcall(function() local i=debug.getinfo(2,"S") if i and i.short_src:find("debug") then while true do end end end) end _AD()',
+    'local function _D(s,k) local r={} for i=1,#s do r[i]=string.char(s:byte(i)~k) end return table.concat(r) end',
+    'local _K=' + xk,
+    'local _E="' + enc + '"',
+    'local _C=_D(_E,_K)',
+    'local _F,_err=loadstring(_C)',
+    'if _F then local _ok,_r=pcall(_F) if not _ok then warn("CloudLua Runtime Error: "..tostring(_r)) end',
+    'else warn("CloudLua: Bytecode error: "..tostring(_err)) end'
   ].join('\n');
 }
- 
+
 // ── API CALLS ──
 async function api(method, path, body, queryParams) {
   let url = API + path;
@@ -539,30 +552,23 @@ async function api(method, path, body, queryParams) {
   }
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  
-  try {
-    const r = await fetch(url, opts);
-    const contentType = r.headers.get('content-type');
-    
-    // Handle text responses (like the loadstring endpoint)
-    if (contentType && contentType.includes('text/plain')) {
-      const text = await r.text();
-      if (!r.ok) throw new Error(text || 'Request failed');
-      return text;
-    }
-    
-    // Handle JSON responses
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Request failed');
-    return data;
-  } catch(e) {
-    if (e.message.includes('<!DOCTYPE')) {
-      throw new Error('Server is waking up or unreachable. Please try again in 30 seconds.');
-    }
-    throw e;
+
+  const r = await fetch(url, opts);
+  const contentType = r.headers.get('content-type');
+
+  // Handle text responses (like the loadstring endpoint)
+  if (contentType && contentType.includes('text/plain')) {
+    const text = await r.text();
+    if (!r.ok) throw new Error(text || 'Request failed');
+    return text;
   }
+
+  // Handle JSON responses
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Request failed');
+  return data;
 }
- 
+
 // ── TOAST ──
 function toast(msg, type) {
   type = type || 'info';
@@ -570,24 +576,53 @@ function toast(msg, type) {
   const t = document.createElement('div');
   t.className = 'toast ' + (type === 'success' ? 'ok' : type === 'error' ? 'err' : 'info');
   t.textContent = msg;
-  t.onclick = () => t.remove();
+  t.onclick = function() { t.remove(); };
   c.appendChild(t);
-  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(120%)'; t.style.transition='.3s'; setTimeout(() => t.remove(), 300); }, 4500);
+  setTimeout(function() {
+    t.style.opacity = '0';
+    t.style.transform = 'translateX(120%)';
+    t.style.transition = '.3s';
+    setTimeout(function() { t.remove(); }, 300);
+  }, 4500);
 }
- 
+
 function setAlert(id, msg, type) {
   const el = document.getElementById(id);
   el.className = 'alert ' + (type === 'error' ? 'err' : 'ok');
   el.textContent = msg;
 }
-function clearAlert(id) { const el = document.getElementById(id); el.className = 'alert'; el.textContent = ''; }
- 
+function clearAlert(id) {
+  const el = document.getElementById(id);
+  el.className = 'alert';
+  el.textContent = '';
+}
+
 // ── MODAL ──
-function openModal(id) { document.getElementById(id).classList.add('open'); document.body.style.overflow='hidden'; }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow=''; }
-document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) { o.classList.remove('open'); document.body.style.overflow=''; } }));
-document.addEventListener('keydown', e => { if (e.key==='Escape') document.querySelectorAll('.overlay.open').forEach(o => { o.classList.remove('open'); document.body.style.overflow=''; }); });
- 
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.querySelectorAll('.overlay').forEach(function(o) {
+  o.addEventListener('click', function(e) {
+    if (e.target === o) {
+      o.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+  });
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.overlay.open').forEach(function(o) {
+      o.classList.remove('open');
+      document.body.style.overflow = '';
+    });
+  }
+});
+
 // ── AUTH ──
 async function doLogin() {
   const key = document.getElementById('loginKey').value.trim();
@@ -602,7 +637,7 @@ async function doLogin() {
     await loadDashboard();
   } catch(e) { setAlert('loginAlert', e.message, 'error'); }
 }
- 
+
 async function doRegister() {
   const name = document.getElementById('regName').value.trim();
   const email = document.getElementById('regEmail').value.trim();
@@ -611,62 +646,65 @@ async function doRegister() {
   if (!name || !email || !pw) { setAlert('regAlert', 'All fields required.', 'error'); return; }
   if (pw.length < 6) { setAlert('regAlert', 'Password must be at least 6 characters.', 'error'); return; }
   try {
-    const user = await api('POST', '/api/register', { name, email, password: pw });
+    const user = await api('POST', '/api/register', { name: name, email: email, password: pw });
     currentUser = user;
     localStorage.setItem('cl_user_key', user.api_key);
     closeModal('registerOv');
     toast('Trial started! Your key: ' + user.api_key, 'success');
-    setTimeout(() => {
+    setTimeout(function() {
       alert('🎉 Account created!\n\nYour API Key:\n' + user.api_key + '\n\nSave this — you need it to sign in.');
     }, 300);
     await loadDashboard();
   } catch(e) { setAlert('regAlert', e.message, 'error'); }
 }
- 
+
 async function doForgot() {
   const email = document.getElementById('forgotEmail').value.trim();
   clearAlert('forgotAlert');
   if (!email) { setAlert('forgotAlert', 'Enter your email.', 'error'); return; }
   try {
-    const data = await api('POST', '/api/forgot-key', { email });
+    const data = await api('POST', '/api/forgot-key', { email: email });
     setAlert('forgotAlert', 'Your API key: ' + data.apiKey, 'success');
-    setTimeout(() => { closeModal('forgotOv'); openModal('loginOv'); document.getElementById('loginKey').value = data.apiKey; }, 2500);
+    setTimeout(function() {
+      closeModal('forgotOv');
+      openModal('loginOv');
+      document.getElementById('loginKey').value = data.apiKey;
+    }, 2500);
   } catch(e) { setAlert('forgotAlert', e.message, 'error'); }
 }
- 
+
 function logout() {
   currentUser = null;
   localStorage.removeItem('cl_user_key');
   showLanding();
   toast('Logged out.', 'info');
 }
- 
+
 // ── TABS ──
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(function(t) {
+  t.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(function(x) { x.classList.remove('active'); });
     t.classList.add('active');
-    const tabName = t.dataset.tab;
-    ['scripts','keys','execlog','blacklist','support','admin'].forEach(n => {
-      const el = document.getElementById('tab-' + n);
+    var tabName = t.dataset.tab;
+    ['scripts', 'keys', 'execlog', 'blacklist', 'support', 'admin'].forEach(function(n) {
+      var el = document.getElementById('tab-' + n);
       if (el) el.style.display = n === tabName ? 'block' : 'none';
     });
     if (tabName === 'admin') renderAdminTab();
     if (tabName === 'support') renderSupportTab();
   });
 });
- 
+
 // ── DASHBOARD ──
 async function loadDashboard() {
   document.getElementById('landing').style.display = 'none';
   document.getElementById('dashboard').classList.add('active');
   document.getElementById('navActions').style.display = 'none';
-  const nu = document.getElementById('navUser');
-  nu.style.display = 'flex';
+  document.getElementById('navUser').style.display = 'flex';
   document.getElementById('navUserName').textContent = currentUser.name + (currentUser.is_admin ? ' ♛' : '');
-  const tb = document.getElementById('navTrialBadge');
+  var tb = document.getElementById('navTrialBadge');
   if (!currentUser.is_admin && currentUser.trial_end) {
-    const days = Math.ceil((new Date(currentUser.trial_end) - new Date()) / 86400000);
+    var days = Math.ceil((new Date(currentUser.trial_end) - new Date()) / 86400000);
     tb.textContent = days > 0 ? days + 'd trial' : 'Expired';
     tb.style.color = days <= 2 ? 'var(--red)' : 'var(--yellow)';
   } else if (currentUser.is_admin) {
@@ -675,21 +713,24 @@ async function loadDashboard() {
   } else {
     tb.textContent = '';
   }
-  const adminTab = document.querySelector('.admin-only');
+  var adminTab = document.querySelector('.admin-only');
   if (adminTab) adminTab.style.display = currentUser.is_admin ? 'block' : 'none';
- 
   await refreshData();
 }
- 
+
 async function refreshData() {
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    [userScripts, userKeys, userExecs, userBlacklist] = await Promise.all([
-      api('GET', '/api/scripts', null, { apiKey }),
-      api('GET', '/api/keys', null, { apiKey }),
-      api('GET', '/api/executions', null, { apiKey }),
-      api('GET', '/api/blacklist', null, { apiKey })
+    var results = await Promise.all([
+      api('GET', '/api/scripts', null, { apiKey: apiKey }),
+      api('GET', '/api/keys', null, { apiKey: apiKey }),
+      api('GET', '/api/executions', null, { apiKey: apiKey }),
+      api('GET', '/api/blacklist', null, { apiKey: apiKey })
     ]);
+    userScripts = results[0];
+    userKeys = results[1];
+    userExecs = results[2];
+    userBlacklist = results[3];
   } catch(e) { console.error('Refresh error:', e); }
   renderStats();
   renderScripts();
@@ -697,119 +738,130 @@ async function refreshData() {
   renderExecs();
   renderBlacklist();
 }
- 
+
 function renderStats() {
-  const limit = currentUser.key_limit || 10;
-  let trialHtml = '';
+  var limit = currentUser.key_limit || 10;
+  var trialHtml = '';
   if (!currentUser.is_admin && currentUser.trial_end) {
-    const days = Math.ceil((new Date(currentUser.trial_end) - new Date()) / 86400000);
-    trialHtml = `<div class="stat"><div class="slabel">Trial Days Left</div><div class="sval ${days<=2?'sval red':days<=4?'yellow':''}">${days > 0 ? days : 0}</div></div>`;
+    var days = Math.ceil((new Date(currentUser.trial_end) - new Date()) / 86400000);
+    trialHtml = '<div class="stat"><div class="slabel">Trial Days Left</div><div class="sval ' + (days <= 2 ? 'sval red' : days <= 4 ? 'yellow' : '') + '">' + (days > 0 ? days : 0) + '</div></div>';
   }
-  document.getElementById('statsRow').innerHTML = `
-    <div class="stat"><div class="slabel">Plan</div><div class="sval" style="font-size:1.1rem;">${currentUser.is_admin ? 'Admin' : '7-Day Trial'}</div></div>
-    <div class="stat"><div class="slabel">Scripts</div><div class="sval green">${userScripts.length}</div></div>
-    <div class="stat"><div class="slabel">Keys Used</div><div class="sval">${userKeys.length}<span style="font-size:0.75rem;color:var(--muted)"> / ${limit === 999999 ? '∞' : limit}</span></div></div>
-    <div class="stat"><div class="slabel">Total Executions</div><div class="sval green">${userExecs.length}</div></div>
-    <div class="stat"><div class="slabel">Blacklisted</div><div class="sval ${userBlacklist.length>0?'red':''}">${userBlacklist.length}</div></div>
-    ${trialHtml}
-  `;
+  document.getElementById('statsRow').innerHTML =
+    '<div class="stat"><div class="slabel">Plan</div><div class="sval" style="font-size:1.1rem;">' + (currentUser.is_admin ? 'Admin' : '7-Day Trial') + '</div></div>' +
+    '<div class="stat"><div class="slabel">Scripts</div><div class="sval green">' + userScripts.length + '</div></div>' +
+    '<div class="stat"><div class="slabel">Keys Used</div><div class="sval">' + userKeys.length + '<span style="font-size:0.75rem;color:var(--muted)"> / ' + (limit === 999999 ? '∞' : limit) + '</span></div></div>' +
+    '<div class="stat"><div class="slabel">Total Executions</div><div class="sval green">' + userExecs.length + '</div></div>' +
+    '<div class="stat"><div class="slabel">Blacklisted</div><div class="sval ' + (userBlacklist.length > 0 ? 'red' : '') + '">' + userBlacklist.length + '</div></div>' +
+    trialHtml;
 }
- 
+
 function renderScripts() {
-  const tb = document.getElementById('tScripts');
+  var tb = document.getElementById('tScripts');
   if (!userScripts.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="4">No scripts yet. Obfuscate one to get started.</td></tr>'; return; }
-  tb.innerHTML = userScripts.map(s => {
-    const kCount = userKeys.filter(k => k.script_id === s.id).length;
-    const dt = new Date(s.created_at).toLocaleDateString();
-    return `<tr>
-      <td><strong>${esc(s.name)}</strong></td>
-      <td>${kCount}</td>
-      <td>${dt}</td>
-      <td><div class="tact">
-        <button class="dbtn ghost sm" onclick="viewScript(${s.id})">👁 View</button>
-        <button class="dbtn ghost sm" onclick="editScript(${s.id})">✏️ Edit</button>
-        <button class="dbtn green sm" onclick="getLoadstringForScript(${s.id})">📎 Get Loadstring</button>
-        <button class="dbtn danger sm" onclick="deleteScript(${s.id})">🗑</button>
-      </div></td>
-    </tr>`;
+  tb.innerHTML = userScripts.map(function(s) {
+    var kCount = userKeys.filter(function(k) { return k.script_id === s.id; }).length;
+    var dt = new Date(s.created_at).toLocaleDateString();
+    return '<tr>' +
+      '<td><strong>' + esc(s.name) + '</strong></td>' +
+      '<td>' + kCount + '</td>' +
+      '<td>' + dt + '</td>' +
+      '<td><div class="tact">' +
+        '<button class="dbtn ghost sm" onclick="viewScript(' + s.id + ')">👁 View</button>' +
+        '<button class="dbtn ghost sm" onclick="editScript(' + s.id + ')">✏️ Edit</button>' +
+        '<button class="dbtn green sm" onclick="getLoadstringForScript(' + s.id + ')">📎 Get Loadstring</button>' +
+        '<button class="dbtn danger sm" onclick="deleteScript(' + s.id + ')">🗑</button>' +
+      '</div></td>' +
+    '</tr>';
   }).join('');
 }
- 
+
 function renderKeys() {
-  const tb = document.getElementById('tKeys');
+  var tb = document.getElementById('tKeys');
   if (!userKeys.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="5">No keys generated yet.</td></tr>'; return; }
-  tb.innerHTML = userKeys.map(k => {
-    const sc = userScripts.find(s => s.id === k.script_id);
-    const exCount = userExecs.filter(e => e.key_id === k.id).length;
-    return `<tr>
-      <td><code class="key">${esc(k.key)}</code></td>
-      <td>${sc ? esc(sc.name) : '?'}</td>
-      <td><strong>${exCount}</strong></td>
-      <td><span class="badge ${k.active?'active':'revoked'}">${k.active?'● Active':'○ Revoked'}</span></td>
-      <td><div class="tact">
-        <button class="dbtn green sm" onclick="showLoadstring('${k.id}')">📎 Loadstring</button>
-        <button class="dbtn ghost sm" onclick="toggleKey('${k.id}')">${k.active?'Revoke':'Activate'}</button>
-        <button class="dbtn danger sm" onclick="deleteKey('${k.id}')">🗑</button>
-      </div></td>
-    </tr>`;
+  tb.innerHTML = userKeys.map(function(k) {
+    var sc = userScripts.find(function(s) { return s.id === k.script_id; });
+    var exCount = userExecs.filter(function(e) { return e.key_id === k.id; }).length;
+    return '<tr>' +
+      '<td><code class="key">' + esc(k.key) + '</code></td>' +
+      '<td>' + (sc ? esc(sc.name) : '?') + '</td>' +
+      '<td><strong>' + exCount + '</strong></td>' +
+      '<td><span class="badge ' + (k.active ? 'active' : 'revoked') + '">' + (k.active ? '● Active' : '○ Revoked') + '</span></td>' +
+      '<td><div class="tact">' +
+        '<button class="dbtn green sm" onclick="showLoadstring(\'' + k.id + '\')">📎 Loadstring</button>' +
+        '<button class="dbtn ghost sm" onclick="toggleKey(\'' + k.id + '\')">' + (k.active ? 'Revoke' : 'Activate') + '</button>' +
+        '<button class="dbtn danger sm" onclick="deleteKey(\'' + k.id + '\')">🗑</button>' +
+      '</div></td>' +
+    '</tr>';
   }).join('');
 }
- 
+
 function renderExecs() {
-  const tb = document.getElementById('tExec');
+  var tb = document.getElementById('tExec');
   if (!userExecs.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="4">No executions recorded yet.</td></tr>'; return; }
-  tb.innerHTML = [...userExecs].slice(0,50).map(e => {
-    const keyStr = e.key_string || e.key_id;
-    const sc = userScripts.find(s => s.id === e.script_id);
-    return `<tr>
-      <td><code class="key" style="font-size:0.62rem;">${esc(keyStr)}</code></td>
-      <td><span class="hwid">${esc(e.hwid||'unknown')}</span></td>
-      <td>${sc ? esc(sc.name) : '?'}</td>
-      <td>${new Date(e.timestamp).toLocaleString()}</td>
-    </tr>`;
+  tb.innerHTML = userExecs.slice(0, 50).map(function(e) {
+    var keyStr = e.key_string || e.key_id;
+    var sc = userScripts.find(function(s) { return s.id === e.script_id; });
+    return '<tr>' +
+      '<td><code class="key" style="font-size:0.62rem;">' + esc(keyStr) + '</code></td>' +
+      '<td><span class="hwid">' + esc(e.hwid || 'unknown') + '</span></td>' +
+      '<td>' + (sc ? esc(sc.name) : '?') + '</td>' +
+      '<td>' + new Date(e.timestamp).toLocaleString() + '</td>' +
+    '</tr>';
   }).join('');
 }
- 
+
 function renderBlacklist() {
-  const tb = document.getElementById('tBl');
+  var tb = document.getElementById('tBl');
   if (!userBlacklist.length) { tb.innerHTML = '<tr class="empty-row"><td colspan="4">Blacklist is empty.</td></tr>'; return; }
-  tb.innerHTML = userBlacklist.map(b => `<tr>
-    <td><span class="hwid">${esc(b.target)}</span></td>
-    <td>${esc(b.reason)}</td>
-    <td>${new Date(b.created_at).toLocaleDateString()}</td>
-    <td><button class="dbtn danger sm" onclick="removeBlacklist('${b.id}')">Remove</button></td>
-  </tr>`).join('');
+  tb.innerHTML = userBlacklist.map(function(b) {
+    return '<tr>' +
+      '<td><span class="hwid">' + esc(b.target) + '</span></td>' +
+      '<td>' + esc(b.reason) + '</td>' +
+      '<td>' + new Date(b.created_at).toLocaleDateString() + '</td>' +
+      '<td><button class="dbtn danger sm" onclick="removeBlacklist(\'' + b.id + '\')">Remove</button></td>' +
+    '</tr>';
+  }).join('');
 }
- 
+
 // ── SUPPORT TAB ──
 function renderSupportTab() {
-  const apiKey = currentUser.api_key || currentUser.apiKey;
-  const tickets = getTickets().filter(t => t.userKey === apiKey);
-  const el = document.getElementById('suppList');
+  var apiKey = currentUser.api_key || currentUser.apiKey;
+  var tickets = getTickets().filter(function(t) { return t.userKey === apiKey; });
+  var el = document.getElementById('suppList');
   if (!tickets.length) { el.innerHTML = '<p style="font-size:0.8rem;color:var(--muted);">No messages yet.</p>'; return; }
-  el.innerHTML = tickets.map(t => `
-    <div class="msg-item ${t.reply?'':'unread'}" id="msg_${t.id}" onclick="toggleMsg('${t.id}')">
-      <div class="msg-head">
-        <span class="msg-from">CloudLua Support</span>
-        <span class="msg-time">${new Date(t.created_at).toLocaleDateString()}</span>
-      </div>
-      <div class="msg-subject">${esc(t.subject)}</div>
-      <div class="msg-body-full">
-        <div style="margin-bottom:8px;"><strong>You:</strong> ${esc(t.message)}</div>
-        ${t.reply ? `<div style="background:var(--bg3);border-radius:6px;padding:10px;margin-top:6px;"><strong>Support:</strong> ${esc(t.reply)}</div>` : '<div style="color:var(--muted);font-style:italic;">Awaiting reply...</div>'}
-      </div>
-    </div>`).join('');
+  el.innerHTML = tickets.map(function(t) {
+    return '<div class="msg-item ' + (t.reply ? '' : 'unread') + '" id="msg_' + t.id + '" onclick="toggleMsg(\'' + t.id + '\')">' +
+      '<div class="msg-head">' +
+        '<span class="msg-from">CloudLua Support</span>' +
+        '<span class="msg-time">' + new Date(t.created_at).toLocaleDateString() + '</span>' +
+      '</div>' +
+      '<div class="msg-subject">' + esc(t.subject) + '</div>' +
+      '<div class="msg-body-full">' +
+        '<div style="margin-bottom:8px;"><strong>You:</strong> ' + esc(t.message) + '</div>' +
+        (t.reply ? '<div style="background:var(--bg3);border-radius:6px;padding:10px;margin-top:6px;"><strong>Support:</strong> ' + esc(t.reply) + '</div>' : '<div style="color:var(--muted);font-style:italic;">Awaiting reply...</div>') +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
- 
+
 function toggleMsg(id) { document.getElementById('msg_' + id).classList.toggle('open'); }
- 
+
 async function sendSupport() {
-  const subject = document.getElementById('suppSubject').value.trim();
-  const message = document.getElementById('suppMsg').value.trim();
+  var subject = document.getElementById('suppSubject').value.trim();
+  var message = document.getElementById('suppMsg').value.trim();
   if (!subject || !message) { toast('Fill in subject and message.', 'error'); return; }
-  const apiKey = currentUser.api_key || currentUser.apiKey;
-  const ticket = { id: 'tkt-' + Date.now(), userKey: apiKey, userName: currentUser.name, userEmail: currentUser.email, subject, message, reply: null, created_at: new Date().toISOString() };
-  const tickets = getTickets();
+  var apiKey = currentUser.api_key || currentUser.apiKey;
+  var ticket = {
+    id: 'tkt-' + Date.now(),
+    userKey: apiKey,
+    userName: currentUser.name,
+    userEmail: currentUser.email,
+    subject: subject,
+    message: message,
+    reply: null,
+    created_at: new Date().toISOString()
+  };
+  var tickets = getTickets();
   tickets.push(ticket);
   saveTickets(tickets);
   document.getElementById('suppSubject').value = '';
@@ -817,128 +869,129 @@ async function sendSupport() {
   toast('Message sent! We\'ll reply shortly.', 'success');
   renderSupportTab();
 }
- 
+
 // ── ADMIN TAB ──
 async function renderAdminTab() {
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    adminUsers = await api('GET', '/api/admin/users', null, { apiKey });
+    adminUsers = await api('GET', '/api/admin/users', null, { apiKey: apiKey });
   } catch(e) { console.error(e); return; }
-  const tb = document.getElementById('tAdminUsers');
-  tb.innerHTML = adminUsers.map(u => {
-    const trialEnd = u.trial_end ? new Date(u.trial_end).toLocaleDateString() : 'N/A';
-    const days = u.trial_end ? Math.ceil((new Date(u.trial_end) - new Date()) / 86400000) : '∞';
-    return `<tr>
-      <td><code class="key" style="font-size:0.62rem;">${esc(u.api_key)}</code></td>
-      <td>${esc(u.name||'')}</td>
-      <td>${esc(u.email||'')}</td>
-      <td style="color:${days<=0?'var(--red)':days<=3?'var(--yellow)':'var(--muted2)'}">${trialEnd} (${days}d)</td>
-      <td>${u.key_limit===999999?'∞':u.key_limit}</td>
-      <td id="exc_${u.api_key}">—</td>
-      <td><div class="tact">
-        <button class="dbtn ghost sm" onclick="openExtend('${u.api_key}')">+Days</button>
-        <button class="dbtn danger sm" onclick="adminDeleteUser('${u.api_key}')">Del</button>
-      </div></td>
-    </tr>`;
+  var tb = document.getElementById('tAdminUsers');
+  tb.innerHTML = adminUsers.map(function(u) {
+    var trialEnd = u.trial_end ? new Date(u.trial_end).toLocaleDateString() : 'N/A';
+    var days = u.trial_end ? Math.ceil((new Date(u.trial_end) - new Date()) / 86400000) : '∞';
+    return '<tr>' +
+      '<td><code class="key" style="font-size:0.62rem;">' + esc(u.api_key) + '</code></td>' +
+      '<td>' + esc(u.name || '') + '</td>' +
+      '<td>' + esc(u.email || '') + '</td>' +
+      '<td style="color:' + (days <= 0 ? 'var(--red)' : days <= 3 ? 'var(--yellow)' : 'var(--muted2)') + '">' + trialEnd + ' (' + days + 'd)</td>' +
+      '<td>' + (u.key_limit === 999999 ? '∞' : u.key_limit) + '</td>' +
+      '<td id="exc_' + u.api_key + '">—</td>' +
+      '<td><div class="tact">' +
+        '<button class="dbtn ghost sm" onclick="openExtend(\'' + u.api_key + '\')">+Days</button>' +
+        '<button class="dbtn danger sm" onclick="adminDeleteUser(\'' + u.api_key + '\')">Del</button>' +
+      '</div></td>' +
+    '</tr>';
   }).join('');
- 
-  adminUsers.forEach(async u => {
-    try {
-      const execs = await api('GET', '/api/executions', null, { apiKey: u.api_key });
-      const el = document.getElementById('exc_' + u.api_key);
+
+  adminUsers.forEach(function(u) {
+    api('GET', '/api/executions', null, { apiKey: u.api_key }).then(function(execs) {
+      var el = document.getElementById('exc_' + u.api_key);
       if (el) el.textContent = execs.length;
-    } catch(e) {}
+    }).catch(function() {});
   });
- 
-  const tickets = getTickets();
-  const inbox = document.getElementById('adminInbox');
+
+  // Admin support inbox
+  var tickets = getTickets();
+  var inbox = document.getElementById('adminInbox');
   if (!tickets.length) { inbox.innerHTML = '<p style="font-size:0.8rem;color:var(--muted);">No support tickets.</p>'; return; }
-  inbox.innerHTML = tickets.map(t => `
-    <div class="msg-item ${t.reply?'':'unread'}" id="admsg_${t.id}" onclick="toggleAdMsg('${t.id}')">
-      <div class="msg-head">
-        <span class="msg-from">${esc(t.userName||'User')} <span style="color:var(--muted);font-weight:400;font-size:0.72rem;">&lt;${esc(t.userEmail||'')}&gt;</span></span>
-        <span class="msg-time">${new Date(t.created_at).toLocaleDateString()}</span>
-      </div>
-      <div class="msg-subject">${esc(t.subject)}</div>
-      <div class="msg-body-full">
-        <div style="margin-bottom:8px;">${esc(t.message)}</div>
-        ${t.reply ? `<div style="background:var(--bg3);border-radius:6px;padding:10px;margin-top:6px;color:var(--green);">Reply sent: ${esc(t.reply)}</div>` : ''}
-        <button class="dbtn ghost sm" style="margin-top:8px;" onclick="event.stopPropagation();openReply('${t.id}')">↩ Reply</button>
-      </div>
-    </div>`).join('');
+  inbox.innerHTML = tickets.map(function(t) {
+    return '<div class="msg-item ' + (t.reply ? '' : 'unread') + '" id="admsg_' + t.id + '" onclick="toggleAdMsg(\'' + t.id + '\')">' +
+      '<div class="msg-head">' +
+        '<span class="msg-from">' + esc(t.userName || 'User') + ' <span style="color:var(--muted);font-weight:400;font-size:0.72rem;">&lt;' + esc(t.userEmail || '') + '&gt;</span></span>' +
+        '<span class="msg-time">' + new Date(t.created_at).toLocaleDateString() + '</span>' +
+      '</div>' +
+      '<div class="msg-subject">' + esc(t.subject) + '</div>' +
+      '<div class="msg-body-full">' +
+        '<div style="margin-bottom:8px;">' + esc(t.message) + '</div>' +
+        (t.reply ? '<div style="background:var(--bg3);border-radius:6px;padding:10px;margin-top:6px;color:var(--green);">Reply sent: ' + esc(t.reply) + '</div>' : '') +
+        '<button class="dbtn ghost sm" style="margin-top:8px;" onclick="event.stopPropagation();openReply(\'' + t.id + '\')">↩ Reply</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
- 
+
 function toggleAdMsg(id) { document.getElementById('admsg_' + id).classList.toggle('open'); }
- 
+
 function openReply(ticketId) {
-  const ticket = getTickets().find(t => t.id === ticketId);
+  var ticket = getTickets().find(function(t) { return t.id === ticketId; });
   if (!ticket) return;
-  document.getElementById('replyTicketInfo').innerHTML = `<strong>${esc(ticket.subject)}</strong><br>${esc(ticket.message)}`;
+  document.getElementById('replyTicketInfo').innerHTML = '<strong>' + esc(ticket.subject) + '</strong><br>' + esc(ticket.message);
   document.getElementById('replyTicketId').value = ticketId;
   document.getElementById('replyText').value = '';
   openModal('replyOv');
 }
- 
+
 function doAdminReply() {
-  const id = document.getElementById('replyTicketId').value;
-  const reply = document.getElementById('replyText').value.trim();
+  var id = document.getElementById('replyTicketId').value;
+  var reply = document.getElementById('replyText').value.trim();
   if (!reply) return;
-  const tickets = getTickets();
-  const t = tickets.find(x => x.id === id);
+  var tickets = getTickets();
+  var t = tickets.find(function(x) { return x.id === id; });
   if (t) { t.reply = reply; saveTickets(tickets); }
   closeModal('replyOv');
   toast('Reply sent.', 'success');
   renderAdminTab();
 }
- 
+
 function openExtend(userKey) {
   document.getElementById('extUserKey').value = userKey;
   document.getElementById('extDays').value = '7';
   openModal('extOv');
 }
- 
+
 async function doExtend() {
-  const userKey = document.getElementById('extUserKey').value;
-  const days = parseInt(document.getElementById('extDays').value);
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var userKey = document.getElementById('extUserKey').value;
+  var days = parseInt(document.getElementById('extDays').value);
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    await api('PUT', '/api/admin/users/' + userKey, { apiKey, days });
+    await api('PUT', '/api/admin/users/' + userKey, { apiKey: apiKey, days: days });
     closeModal('extOv');
     toast('Trial extended by ' + days + ' days.', 'success');
     renderAdminTab();
   } catch(e) { toast(e.message, 'error'); }
 }
- 
+
 async function adminDeleteUser(userKey) {
   if (!confirm('Delete this user and all their data?')) return;
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    await api('DELETE', '/api/admin/users/' + userKey, null, { apiKey });
+    await api('DELETE', '/api/admin/users/' + userKey, null, { apiKey: apiKey });
     toast('User deleted.', 'success');
     renderAdminTab();
   } catch(e) { toast(e.message, 'error'); }
 }
- 
+
 async function adminReset() {
   if (!confirm('DELETE ALL DATA? This cannot be undone.')) return;
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    await api('POST', '/api/admin/reset', { apiKey });
+    await api('POST', '/api/admin/reset', { apiKey: apiKey });
     toast('All data reset.', 'success');
     logout();
   } catch(e) { toast(e.message, 'error'); }
 }
- 
+
 // ── SCRIPTS ──
 async function doObfuscate() {
-  const name = document.getElementById('obfName').value.trim();
-  const code = document.getElementById('obfCode').value.trim();
+  var name = document.getElementById('obfName').value.trim();
+  var code = document.getElementById('obfCode').value.trim();
   clearAlert('obfAlert');
   if (!name || !code) { setAlert('obfAlert', 'Script name and code are required.', 'error'); return; }
-  const obfuscatedCode = obfuscateLua(code);
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var obfuscatedCode = obfuscateLua(code);
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    await api('POST', '/api/scripts', { apiKey, name, originalCode: code, obfuscatedCode });
+    await api('POST', '/api/scripts', { apiKey: apiKey, name: name, originalCode: code, obfuscatedCode: obfuscatedCode });
     closeModal('obfOv');
     document.getElementById('obfName').value = '';
     document.getElementById('obfCode').value = '';
@@ -946,16 +999,16 @@ async function doObfuscate() {
     await refreshData();
   } catch(e) { setAlert('obfAlert', e.message, 'error'); }
 }
- 
+
 function viewScript(id) {
-  const s = userScripts.find(x => x.id === id);
+  var s = userScripts.find(function(x) { return x.id === id; });
   if (!s) return;
   document.getElementById('viewCode').textContent = s.obfuscated_code || s.obfuscatedCode;
   openModal('viewOv');
 }
- 
+
 function editScript(id) {
-  const s = userScripts.find(x => x.id === id);
+  var s = userScripts.find(function(x) { return x.id === id; });
   if (!s) return;
   editingScriptId = id;
   document.getElementById('editName').value = s.name;
@@ -963,46 +1016,43 @@ function editScript(id) {
   clearAlert('editAlert');
   openModal('editOv');
 }
- 
+
 async function doEditSave() {
-  const name = document.getElementById('editName').value.trim();
-  const code = document.getElementById('editCode').value.trim();
+  var name = document.getElementById('editName').value.trim();
+  var code = document.getElementById('editCode').value.trim();
   clearAlert('editAlert');
   if (!name || !code) { setAlert('editAlert', 'Name and code required.', 'error'); return; }
-  const obfuscatedCode = obfuscateLua(code);
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var obfuscatedCode = obfuscateLua(code);
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    await api('PUT', '/api/scripts/' + editingScriptId, { apiKey, name, originalCode: code, obfuscatedCode });
+    await api('PUT', '/api/scripts/' + editingScriptId, { apiKey: apiKey, name: name, originalCode: code, obfuscatedCode: obfuscatedCode });
     closeModal('editOv');
     toast('Script updated!', 'success');
     await refreshData();
   } catch(e) { setAlert('editAlert', e.message, 'error'); }
 }
- 
+
 async function deleteScript(id) {
   if (!confirm('Delete this script and all its keys?')) return;
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    await api('DELETE', '/api/scripts/' + id, null, { apiKey });
+    await api('DELETE', '/api/scripts/' + id, null, { apiKey: apiKey });
     toast('Script deleted.', 'success');
     await refreshData();
   } catch(e) { toast(e.message, 'error'); }
 }
- 
+
 // ── GET LOADSTRING DIRECTLY FROM SCRIPT ──
 async function getLoadstringForScript(scriptId) {
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    // Automatically generate a key for this script
-    const result = await api('POST', '/api/keys', { apiKey, scriptId });
+    var result = await api('POST', '/api/keys', { apiKey: apiKey, scriptId: scriptId });
     toast('Key auto-generated!', 'success');
     await refreshData();
-    // Find the newly created key
-    const newKey = userKeys.find(k => k.id === result.id);
+    var newKey = userKeys.find(function(k) { return k.id === result.id; });
     if (newKey) {
       showLoadstringWithData(newKey);
     } else {
-      // Fallback with result data
       showLoadstringWithData({
         id: result.id,
         key: result.key,
@@ -1015,53 +1065,52 @@ async function getLoadstringForScript(scriptId) {
     toast('Failed to generate key: ' + e.message, 'error');
   }
 }
- 
+
 // ── KEYS ──
 function openGenKeyModal() {
-  const sel = document.getElementById('genKeyScript');
+  var sel = document.getElementById('genKeyScript');
   sel.innerHTML = '<option value="">Select a script...</option>';
-  userScripts.forEach(s => sel.innerHTML += `<option value="${s.id}">${esc(s.name)}</option>`);
+  userScripts.forEach(function(s) { sel.innerHTML += '<option value="' + s.id + '">' + esc(s.name) + '</option>'; });
   clearAlert('genKeyAlert');
   openModal('genKeyOv');
 }
- 
+
 async function doGenKey() {
-  const scriptId = parseInt(document.getElementById('genKeyScript').value);
+  var scriptId = parseInt(document.getElementById('genKeyScript').value);
   clearAlert('genKeyAlert');
   if (!scriptId) { setAlert('genKeyAlert', 'Select a script.', 'error'); return; }
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    const result = await api('POST', '/api/keys', { apiKey, scriptId });
+    var result = await api('POST', '/api/keys', { apiKey: apiKey, scriptId: scriptId });
     closeModal('genKeyOv');
     toast('Key generated!', 'success');
     await refreshData();
-    const newKey = userKeys.find(k => k.id === result.id) || { id: result.id, key: result.key, url_id: result.urlId, script_id: scriptId, active: true };
+    var newKey = userKeys.find(function(k) { return k.id === result.id; }) || { id: result.id, key: result.key, url_id: result.urlId, script_id: scriptId, active: true };
     showLoadstringWithData(newKey);
   } catch(e) { setAlert('genKeyAlert', e.message, 'error'); }
 }
- 
+
 function showLoadstring(keyId) {
-  const k = userKeys.find(x => x.id === keyId);
+  var k = userKeys.find(function(x) { return x.id === keyId; });
   if (k) showLoadstringWithData(k);
 }
- 
+
 function showLoadstringWithData(k) {
   currentLsKey = k;
-  const sc = userScripts.find(s => s.id === k.script_id);
-  const execCount = userExecs.filter(e => e.key_id === k.id).length;
-  const urlId = k.url_id || k.urlId;
-  const keyStr = k.key;
-  document.getElementById('lsBox').innerHTML = `
-    <div style="color:var(--muted);font-size:0.65rem;margin-bottom:8px;">-- Paste into your executor</div>
-    <div class="kl">local key = "${keyStr}"</div>
-    <div class="kl">local hwid = game:GetService("RbxAnalyticsService"):GetClientId()</div>
-    <div style="color:var(--text);">loadstring(game:HttpGet("${API}/s/${urlId}?key="..key.."&hwid="..hwid))()</div>
-    <div class="ml" style="margin-top:10px;font-size:0.65rem;">Script: ${sc?esc(sc.name):'?'} | Executions: ${execCount}</div>
-    <div class="ml" style="margin-top:4px;font-size:0.65rem;color:${k.active?'var(--green)':'var(--red)'};">Authorization: ${k.active?'✅ Authorized — Key Active':'❌ Unauthorized — Key Revoked'}</div>
-  `;
+  var sc = userScripts.find(function(s) { return s.id === k.script_id; });
+  var execCount = userExecs.filter(function(e) { return e.key_id === k.id; }).length;
+  var urlId = k.url_id || k.urlId;
+  var keyStr = k.key;
+  document.getElementById('lsBox').innerHTML =
+    '<div style="color:var(--muted);font-size:0.65rem;margin-bottom:8px;">-- Paste into your executor</div>' +
+    '<div class="kl">local key = "' + keyStr + '"</div>' +
+    '<div class="kl">local hwid = game:GetService("RbxAnalyticsService"):GetClientId()</div>' +
+    '<div style="color:var(--text);">loadstring(game:HttpGet("' + API + '/s/' + urlId + '?key="..key.."&hwid="..hwid))()</div>' +
+    '<div class="ml" style="margin-top:10px;font-size:0.65rem;">Script: ' + (sc ? esc(sc.name) : '?') + ' | Executions: ' + execCount + '</div>' +
+    '<div class="ml" style="margin-top:4px;font-size:0.65rem;color:' + (k.active ? 'var(--green)' : 'var(--red)') + ';">Authorization: ' + (k.active ? '✅ Authorized — Key Active' : '❌ Unauthorized — Key Revoked') + '</div>';
   openModal('lsOv');
 }
- 
+
 async function toggleKey(id) {
   try {
     await api('PUT', '/api/keys/' + id + '/toggle', {});
@@ -1069,7 +1118,7 @@ async function toggleKey(id) {
     toast('Key status updated.', 'success');
   } catch(e) { toast(e.message, 'error'); }
 }
- 
+
 async function deleteKey(id) {
   if (!confirm('Delete this key?')) return;
   try {
@@ -1078,39 +1127,39 @@ async function deleteKey(id) {
     toast('Key deleted.', 'success');
   } catch(e) { toast(e.message, 'error'); }
 }
-  
+
 async function simulateExec() {
   if (!currentLsKey) return;
-  const k = userKeys.find(x => x.id === currentLsKey.id) || currentLsKey;
+  var k = userKeys.find(function(x) { return x.id === currentLsKey.id; }) || currentLsKey;
   if (!k.active) { toast('⛔ Key is revoked — execution blocked.', 'error'); return; }
-  const hwid = 'HWID-' + Math.random().toString(36).substring(2,10).toUpperCase();
-  const urlId = k.url_id || k.urlId;
-  const keyStr = k.key;
+  var hwid = 'HWID-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+  var urlId = k.url_id || k.urlId;
+  var keyStr = k.key;
   try {
-    const r = await fetch(`${API}/s/${urlId}?key=${keyStr}&hwid=${hwid}`);
-    const text = await r.text();
-    if (!r.ok) { 
-      toast('⛔ ' + text, 'error'); 
-      return; 
+    var r = await fetch(API + '/s/' + urlId + '?key=' + keyStr + '&hwid=' + hwid);
+    var text = await r.text();
+    if (!r.ok) {
+      toast('⛔ ' + text, 'error');
+      return;
     }
     await refreshData();
-    const execCount = userExecs.filter(e => e.key_id === k.id).length;
-    toast(`✅ Exec #${execCount} | HWID: ${hwid}`, 'success');
+    var execCount = userExecs.filter(function(e) { return e.key_id === k.id; }).length;
+    toast('✅ Exec #' + execCount + ' | HWID: ' + hwid, 'success');
     showLoadstringWithData(k);
-  } catch(e) { 
-    toast('Execution error: ' + e.message, 'error'); 
+  } catch(e) {
+    toast('Execution error: ' + e.message, 'error');
   }
 }
- 
+
 // ── BLACKLIST ──
 async function doBlacklist() {
-  const target = document.getElementById('blTarget').value.trim();
-  const reason = document.getElementById('blReason').value.trim();
+  var target = document.getElementById('blTarget').value.trim();
+  var reason = document.getElementById('blReason').value.trim();
   clearAlert('blAlert');
   if (!target || !reason) { setAlert('blAlert', 'HWID and reason required.', 'error'); return; }
-  const apiKey = currentUser.api_key || currentUser.apiKey;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
   try {
-    await api('POST', '/api/blacklist', { apiKey, target, reason });
+    await api('POST', '/api/blacklist', { apiKey: apiKey, target: target, reason: reason });
     closeModal('blOv');
     document.getElementById('blTarget').value = '';
     document.getElementById('blReason').value = '';
@@ -1118,7 +1167,7 @@ async function doBlacklist() {
     await refreshData();
   } catch(e) { setAlert('blAlert', e.message, 'error'); }
 }
- 
+
 async function removeBlacklist(id) {
   try {
     await api('DELETE', '/api/blacklist/' + id, {});
@@ -1126,27 +1175,53 @@ async function removeBlacklist(id) {
     await refreshData();
   } catch(e) { toast(e.message, 'error'); }
 }
- 
+
 // ── UTILS ──
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 function copyText(text) {
-  navigator.clipboard.writeText(text).then(() => toast('Copied!', 'success')).catch(() => {
-    const ta = document.createElement('textarea'); ta.value = text; ta.style.position='fixed'; ta.style.left='-9999px';
-    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-    toast('Copied!', 'success');
-  });
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() { toast('Copied!', 'success'); });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('Copied!', 'success'); } catch(e) { toast('Copy failed', 'error'); }
+    document.body.removeChild(ta);
+  }
 }
 function copyLoadstring() {
-  const el = document.getElementById('lsBox');
-  if (el) copyText(el.innerText.replace(/-- Paste into your executor\n?/,'').trim());
+  var el = document.getElementById('lsBox');
+  if (el) copyText(el.innerText.replace(/-- Paste into your executor\n?/, '').trim());
 }
- 
+
 function showLanding() {
   document.getElementById('landing').style.display = 'block';
   document.getElementById('dashboard').classList.remove('active');
   document.getElementById('navActions').style.display = 'flex';
   document.getElementById('navUser').style.display = 'none';
 }
+
+// ── INIT ──
+async function init() {
+  var saved = localStorage.getItem('cl_user_key');
+  if (saved) {
+    try {
+      var user = await api('POST', '/api/login', { apiKey: saved });
+      currentUser = user;
+      await loadDashboard();
+    } catch(e) {
+      localStorage.removeItem('cl_user_key');
+    }
+  }
+  document.getElementById('pageLoader').classList.add('hide');
+}
+
+init();
  
 // ── INIT ──
 async function init() {
