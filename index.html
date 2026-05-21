@@ -846,30 +846,85 @@ function renderSupportTab() {
 
 function toggleMsg(id) { document.getElementById('msg_' + id).classList.toggle('open'); }
 
+// ── SUPPORT (Backend) ──
 async function sendSupport() {
   var subject = document.getElementById('suppSubject').value.trim();
   var message = document.getElementById('suppMsg').value.trim();
   if (!subject || !message) { toast('Fill in subject and message.', 'error'); return; }
   var apiKey = currentUser.api_key || currentUser.apiKey;
-  var ticket = {
-    id: 'tkt-' + Date.now(),
-    userKey: apiKey,
-    userName: currentUser.name,
-    userEmail: currentUser.email,
-    subject: subject,
-    message: message,
-    reply: null,
-    created_at: new Date().toISOString()
-  };
-  var tickets = getTickets();
-  tickets.push(ticket);
-  saveTickets(tickets);
-  document.getElementById('suppSubject').value = '';
-  document.getElementById('suppMsg').value = '';
-  toast('Message sent! We\'ll reply shortly.', 'success');
-  renderSupportTab();
+  try {
+    await api('POST', '/api/support', { apiKey: apiKey, subject: subject, message: message });
+    document.getElementById('suppSubject').value = '';
+    document.getElementById('suppMsg').value = '';
+    toast('Message sent! We\'ll reply shortly.', 'success');
+    renderSupportTab();
+  } catch(e) { toast(e.message, 'error'); }
 }
 
+async function renderSupportTab() {
+  var apiKey = currentUser.api_key || currentUser.apiKey;
+  try {
+    var tickets = await api('GET', '/api/support', null, { apiKey: apiKey });
+    var el = document.getElementById('suppList');
+    if (!tickets.length) { el.innerHTML = '<p style="font-size:0.8rem;color:var(--muted);">No messages yet.</p>'; return; }
+    el.innerHTML = tickets.map(function(t) {
+      return '<div class="msg-item ' + (t.reply ? '' : 'unread') + '" onclick="toggleMsg(\'msg_' + t.id + '\')">' +
+        '<div class="msg-head">' +
+          '<span class="msg-from">CloudLua Support</span>' +
+          '<span class="msg-time">' + new Date(t.created_at).toLocaleDateString() + '</span>' +
+        '</div>' +
+        '<div class="msg-subject">' + esc(t.subject) + '</div>' +
+        '<div class="msg-body-full">' +
+          '<div><strong>You:</strong> ' + esc(t.message) + '</div>' +
+          (t.reply ? '<div style="background:var(--bg3);border-radius:6px;padding:10px;margin-top:6px;"><strong>Support:</strong> ' + esc(t.reply) + '</div>' : '<div style="color:var(--muted);font-style:italic;">Awaiting reply...</div>') +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+// Admin support functions
+async function renderAdminInbox() {
+  var apiKey = currentUser.api_key || currentUser.apiKey;
+  try {
+    var tickets = await api('GET', '/api/admin/support', null, { apiKey: apiKey });
+    var inbox = document.getElementById('adminInbox');
+    if (!tickets.length) { inbox.innerHTML = '<p style="font-size:0.8rem;color:var(--muted);">No support tickets.</p>'; return; }
+    inbox.innerHTML = tickets.map(function(t) {
+      return '<div class="msg-item ' + (t.reply ? '' : 'unread') + '" onclick="toggleAdMsg(\'admsg_' + t.id + '\')">' +
+        '<div class="msg-head">' +
+          '<span class="msg-from">' + esc(t.user_api_key) + '</span>' +
+          '<span class="msg-time">' + new Date(t.created_at).toLocaleDateString() + '</span>' +
+        '</div>' +
+        '<div class="msg-subject">' + esc(t.subject) + '</div>' +
+        '<div class="msg-body-full">' +
+          '<div>' + esc(t.message) + '</div>' +
+          (t.reply ? '<div style="background:var(--bg3);border-radius:6px;padding:10px;margin-top:6px;color:var(--green);">Reply sent: ' + esc(t.reply) + '</div>' : '') +
+          '<button class="dbtn ghost sm" style="margin-top:8px;" onclick="event.stopPropagation();openReply(\'' + t.id + '\')">↩ Reply</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) { console.error(e); }
+}
+
+function openReply(ticketId) {
+  document.getElementById('replyTicketId').value = ticketId;
+  document.getElementById('replyText').value = '';
+  openModal('replyOv');
+}
+
+async function doAdminReply() {
+  var id = document.getElementById('replyTicketId').value;
+  var reply = document.getElementById('replyText').value.trim();
+  if (!reply) return;
+  var apiKey = currentUser.api_key || currentUser.apiKey;
+  try {
+    await api('PUT', '/api/admin/support/' + id, { apiKey: apiKey, reply: reply });
+    closeModal('replyOv');
+    toast('Reply sent.', 'success');
+    renderAdminInbox();
+  } catch(e) { toast(e.message, 'error'); }
+}
 // ── ADMIN TAB ──
 async function renderAdminTab() {
   var apiKey = currentUser.api_key || currentUser.apiKey;
