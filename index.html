@@ -507,7 +507,7 @@ let adminUsers = [];
 let currentLsKey = null;
 let editingScriptId = null;
  
-// ── LOCAL STORAGE SUPPORT TICKETS (simulated inbox since backend has no tickets endpoint) ──
+// ── LOCAL STORAGE SUPPORT TICKETS ──
 function getTickets() { try { return JSON.parse(localStorage.getItem(SUPPORT_KEY) || '[]'); } catch(e) { return []; } }
 function saveTickets(t) { localStorage.setItem(SUPPORT_KEY, JSON.stringify(t)); }
  
@@ -598,7 +598,6 @@ async function doRegister() {
     localStorage.setItem('cl_user_key', user.api_key);
     closeModal('registerOv');
     toast('Trial started! Your key: ' + user.api_key, 'success');
-    // Show the API key prominently
     setTimeout(() => {
       alert('🎉 Account created!\n\nYour API Key:\n' + user.api_key + '\n\nSave this — you need it to sign in.');
     }, 300);
@@ -647,7 +646,6 @@ async function loadDashboard() {
   const nu = document.getElementById('navUser');
   nu.style.display = 'flex';
   document.getElementById('navUserName').textContent = currentUser.name + (currentUser.is_admin ? ' ♛' : '');
-  // Trial badge
   const tb = document.getElementById('navTrialBadge');
   if (!currentUser.is_admin && currentUser.trial_end) {
     const days = Math.ceil((new Date(currentUser.trial_end) - new Date()) / 86400000);
@@ -659,7 +657,6 @@ async function loadDashboard() {
   } else {
     tb.textContent = '';
   }
-  // Show admin tab
   const adminTab = document.querySelector('.admin-only');
   if (adminTab) adminTab.style.display = currentUser.is_admin ? 'block' : 'none';
  
@@ -684,7 +681,6 @@ async function refreshData() {
 }
  
 function renderStats() {
-  const apiKey = currentUser.api_key || currentUser.apiKey;
   const limit = currentUser.key_limit || 10;
   let trialHtml = '';
   if (!currentUser.is_admin && currentUser.trial_end) {
@@ -714,6 +710,7 @@ function renderScripts() {
       <td><div class="tact">
         <button class="dbtn ghost sm" onclick="viewScript(${s.id})">👁 View</button>
         <button class="dbtn ghost sm" onclick="editScript(${s.id})">✏️ Edit</button>
+        <button class="dbtn green sm" onclick="getLoadstringForScript(${s.id})">📎 Get Loadstring</button>
         <button class="dbtn danger sm" onclick="deleteScript(${s.id})">🗑</button>
       </div></td>
     </tr>`;
@@ -827,7 +824,6 @@ async function renderAdminTab() {
     </tr>`;
   }).join('');
  
-  // Fetch exec counts asynchronously
   adminUsers.forEach(async u => {
     try {
       const execs = await api('GET', '/api/executions', null, { apiKey: u.api_key });
@@ -836,7 +832,6 @@ async function renderAdminTab() {
     } catch(e) {}
   });
  
-  // Admin inbox
   const tickets = getTickets();
   const inbox = document.getElementById('adminInbox');
   if (!tickets.length) { inbox.innerHTML = '<p style="font-size:0.8rem;color:var(--muted);">No support tickets.</p>'; return; }
@@ -976,6 +971,33 @@ async function deleteScript(id) {
   } catch(e) { toast(e.message, 'error'); }
 }
  
+// ── GET LOADSTRING DIRECTLY FROM SCRIPT ──
+async function getLoadstringForScript(scriptId) {
+  const apiKey = currentUser.api_key || currentUser.apiKey;
+  try {
+    // Automatically generate a key for this script
+    const result = await api('POST', '/api/keys', { apiKey, scriptId });
+    toast('Key auto-generated!', 'success');
+    await refreshData();
+    // Find the newly created key
+    const newKey = userKeys.find(k => k.id === result.id);
+    if (newKey) {
+      showLoadstringWithData(newKey);
+    } else {
+      // Fallback with result data
+      showLoadstringWithData({
+        id: result.id,
+        key: result.key,
+        url_id: result.urlId || result.url_id,
+        script_id: scriptId,
+        active: true
+      });
+    }
+  } catch(e) {
+    toast('Failed to generate key: ' + e.message, 'error');
+  }
+}
+ 
 // ── KEYS ──
 function openGenKeyModal() {
   const sel = document.getElementById('genKeyScript');
@@ -995,7 +1017,6 @@ async function doGenKey() {
     closeModal('genKeyOv');
     toast('Key generated!', 'success');
     await refreshData();
-    // Find and show loadstring
     const newKey = userKeys.find(k => k.id === result.id) || { id: result.id, key: result.key, url_id: result.urlId, script_id: scriptId, active: true };
     showLoadstringWithData(newKey);
   } catch(e) { setAlert('genKeyAlert', e.message, 'error'); }
@@ -1018,6 +1039,7 @@ function showLoadstringWithData(k) {
     <div class="kl">local hwid = game:GetService("RbxAnalyticsService"):GetClientId()</div>
     <div style="color:var(--text);">loadstring(game:HttpGet("${API}/s/${urlId}?key="..key.."&hwid="..hwid))()</div>
     <div class="ml" style="margin-top:10px;font-size:0.65rem;">Script: ${sc?esc(sc.name):'?'} | Executions: ${execCount}</div>
+    <div class="ml" style="margin-top:4px;font-size:0.65rem;color:${k.active?'var(--green)':'var(--red)'};">Authorization: ${k.active?'✅ Authorized — Key Active':'❌ Unauthorized — Key Revoked'}</div>
   `;
   openModal('lsOv');
 }
@@ -1121,4 +1143,3 @@ init();
 </script>
 </body>
 </html>
- 
